@@ -2,41 +2,13 @@
 from flask import Flask, render_template
 
 
-import mysql.connector
-from mysql.connector import Error
-
-
 app = Flask(__name__)
-
-
-# Função para testar a conexão ao MySQL
-def test_mysql_connection():
-    connection = None  # Inicializando connection como None
-    try:
-        connection = mysql.connector.connect(
-            host='db',  # Nome do container do MySQL no Docker Compose
-            port=3306,
-            user='flask_user',
-            password='flask_password',
-            database='flask_db'
-        )
-        if connection.is_connected():
-            print("Conexão ao MySQL foi bem-sucedida!")
-            return "Conexão bem-sucedida!"
-    except Error as e:
-        print(f"Erro ao conectar ao MySQL: {e}")
-        return f"Erro: {e}"
-    finally:
-        if connection and connection.is_connected():
-            connection.close()
 
 
 @app.route("/")
 def home():
     # return "Olá, mundo! Aplicação rodando no Docker."
-    # return render_template('index.html')
-    connection_status = test_mysql_connection()
-    return render_template('index.html', connection_status=connection_status)
+    return render_template('index-base.html')
     
 
 @app.route('/user/<username>')
