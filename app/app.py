@@ -1,42 +1,43 @@
 # from flask import Flask
-from flask import Flask, render_template
-
-
-import mysql.connector
-from mysql.connector import Error
-
+# from flask import Flask, render_template
+from flask import Flask, request, render_template, redirect, url_for, flash
 
 app = Flask(__name__)
+# app.secret_key = 'sua_chave_secreta'  # Necessário para flash messages
+app.secret_key = '24e23c43d423c434343vfghfgd'
 
 
-# Função para testar a conexão ao MySQL
-def test_mysql_connection():
-    connection = None  # Inicializando connection como None
-    try:
-        connection = mysql.connector.connect(
-            host='db',  # Nome do container do MySQL no Docker Compose
-            port=3306,
-            user='flask_user',
-            password='flask_password',
-            database='flask_db'
-        )
-        if connection.is_connected():
-            print("Conexão ao MySQL foi bem-sucedida!")
-            return "Conexão bem-sucedida!"
-    except Error as e:
-        print(f"Erro ao conectar ao MySQL: {e}")
-        return f"Erro: {e}"
-    finally:
-        if connection and connection.is_connected():
-            connection.close()
+@app.route('/login', methods=['POST'])
+def login():
+    if request.method == 'POST':
+        username = request.form.get('username')
+        password = request.form.get('password')
+        
+        if not username or not password:
+            flash('Preencha todos os campos!', 'error')
+        elif len(password) < 6:
+            flash('Senha deve ter 6+ caracteres!', 'error')
+        elif password != "123456":
+            flash('Senha incorreta!', 'error')
+        # simular acesso a database
+        elif username == "admin" and password == "123456":
+            return redirect(url_for('dashboard'))
+        else:
+            flash('Credenciais inválidas!', 'error')
+
+    return render_template('login.html')
 
 
 @app.route("/")
 def home():
     # return "Olá, mundo! Aplicação rodando no Docker."
-    # return render_template('index.html')
-    connection_status = test_mysql_connection()
-    return render_template('index.html', connection_status=connection_status)
+    return render_template('login.html')
+
+
+@app.route('/dashboard')
+def dashboard():
+    # return "Página restrita - Dashboard"
+    return render_template('index.html')
     
 
 @app.route('/user/<username>')
@@ -47,6 +48,12 @@ def show_user(username):
 @app.route("/sobre")
 def sobre():
     return render_template('sobre.html')
+
+
+@app.route('/busca', methods=['GET'])
+def busca():
+    termo = request.args.get('q')
+    return f"Você buscou por: {termo}"
 
 
 if __name__ == "__main__":
