@@ -1,14 +1,14 @@
 services:
   app:
     build: ./app
-    container_name: python_app
+    container_name: flask-python_app
     environment:
       - DB_HOST=db
       - DB_USER=${MYSQL_USER}
       - DB_PASSWORD=${MYSQL_PASSWORD}
       - DB_NAME=${MYSQL_DATABASE}
     networks:
-      - mynetwork
+      - flask-network
     volumes:
       - ./app:/app
     depends_on:
@@ -18,20 +18,20 @@ services:
   
   web:
     image: nginx:latest
-    container_name: nginx_server
+    container_name: flask-nginx_server
     ports:
       - "80:80"
     volumes:
       - ./nginx/nginx.conf:/etc/nginx/nginx.conf:ro
       - ./app:/app
     networks:
-      - mynetwork
+      - flask-network
     depends_on:
       - app
   
   db:
     image: mysql:latest
-    container_name: mysql_db
+    container_name: flask-mysql_db
     env_file:
       - ./db/.env
     volumes:
@@ -40,15 +40,15 @@ services:
     ports:
       - 3306:3306
     networks:
-      - mynetwork
+      - flask-network
     healthcheck:
       test: ["CMD", "mysqladmin", "ping", "-h", "localhost"]
       timeout: 10s
       retries: 10
 
 networks:
-  mynetwork:
-    driver: bridge
+  flask-network:
+    external: true
 
 volumes:
   db_data:
