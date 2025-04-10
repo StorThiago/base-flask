@@ -70,7 +70,7 @@ base-flask/
 
 - Clone este repositório em sua máquina usando o seguinte comando:
 ```bash
-git clone git@github.com:torThiago/base-flask
+git clone git@github.com:StorThiago/base-flask
 ```
 
 - Entre no repositório clonado
