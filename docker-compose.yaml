@@ -2,11 +2,6 @@ services:
   app:
     build: ./app
     container_name: flask-python_app
-    # environment:
-    #   - DB_HOST=db
-    #   - DB_USER=${MYSQL_USER}
-    #   - DB_PASSWORD=${MYSQL_PASSWORD}
-    #   - DB_NAME=${MYSQL_DATABASE}
     env_file:
       - ./db/.env
     networks:
