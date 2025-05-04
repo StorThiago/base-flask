@@ -23,7 +23,7 @@
         {% endif %}
         {% endwith %}
     
-    <form method="POST" action="/login">
+    <form method="POST" action="{{ url_for('login') }}">
 
         <div class="mb-3">
             <label for="username" class="form-label">Usuário</label>
@@ -40,8 +40,6 @@
         </div>
 
         <button type="submit" class="btn btn-primary w-100">Entrar</button>
-        <p class="text-red"><small>Status da Conexão: {{ connection_status }}</small></p>
-
 
     </form>
     

@@ -1,8 +1,7 @@
-# from flask import Flask
-# from flask import Flask, render_template
 from flask import Flask, request, render_template, redirect, url_for, flash, g
+from flask import session
 import mysql.connector
-import os # para receber as credenciais de acesso a base do container
+import os
 
 
 app = Flask(__name__)
@@ -29,10 +28,10 @@ def get_db():
                 database=app.config['MYSQL_DATABASE']
             )
             app.logger.info("Nova conexão com a base de dados estabelecida")
-            return "Conexão bem-sucedida!"
+            # return "Conexão bem-sucedida!"
         except mysql.connector.Error as err:
             app.logger.error(f"Falha na conexão com a base: {err}")
-            return f"Erro: {e}"
+            # return f"Erro: {e}"
             raise
     return g.db
 
@@ -49,38 +48,83 @@ def close_db(error):
             app.logger.error(f"Erro ao fechar conexão: {err}")
 
 
-
-@app.route('/login', methods=['POST'])
+@app.route('/login',  methods=['GET', 'POST'])
 def login():
     if request.method == 'POST':
         username = request.form.get('username')
         password = request.form.get('password')
-        
+
         if not username or not password:
             flash('Preencha todos os campos!', 'error')
-        elif len(password) < 6:
-            flash('Senha deve ter 6+ caracteres!', 'error')
-        elif password != "123456":
-            flash('Senha incorreta!', 'error')
-        # simular acesso a database
-        elif username == "admin" and password == "123456":
-            return redirect(url_for('dashboard'))
-        else:
-            flash('Credenciais inválidas!', 'error')
+            return render_template('login.html')
+
+        try:
+            db = get_db()
+            cursor = db.cursor(dictionary=True)
+            query = "SELECT * FROM users WHERE username = %s AND password = %s"
+            cursor.execute(query, (username, password))
+            user = cursor.fetchone()
+            cursor.close()
+
+            if user:
+                # Salvar informações do usuário na sessão
+                session['user_id'] = user['id']
+                session['username'] = user['username']
+                flash('Login bem-sucedido!', 'success')
+                return redirect(url_for('dashboard'))
+            else:
+                flash('Credenciais inválidas!', 'error')
+
+        except mysql.connector.Error as err:
+            app.logger.error(f"Erro na verificação de login: {err}")
+            flash('Erro ao acessar a base de dados.', 'error')
 
     return render_template('login.html')
+
+# @app.route('/login', methods=['POST'])
+# def login():
+#     if request.method == 'POST':
+#         username = request.form.get('username')
+#         password = request.form.get('password')
+        
+#         if not username or not password:
+#             flash('Preencha todos os campos!', 'error')
+#         elif len(password) < 6:
+#             flash('Senha deve ter 6+ caracteres!', 'error')
+#         elif password != "123456":
+#             flash('Senha incorreta!', 'error')
+#         # simular acesso a database
+#         elif username == "admin" and password == "123456":
+#             return redirect(url_for('dashboard'))
+#         else:
+#             flash('Credenciais inválidas!', 'error')
+
+#     return render_template('login.html')
+
+
+@app.route('/logout')
+def logout():
+    session.clear()  # Limpae toda a sessão para nao permitir navegação nao permitida
+    flash('Você saiu com sucesso!', 'info')
+    return redirect(url_for('home'))
 
 
 @app.route("/")
 def home():
-    connection_status = get_db()
-    return render_template('login.html', connection_status=connection_status)
+    return render_template('login.html')
 
 
 @app.route('/dashboard')
 def dashboard():
-    # return "Página restrita - Dashboard"
+    if 'user_id' not in session:
+        flash('Por favor, faça login primeiro!', 'warning')
+        return redirect(url_for('login'))
+    
     return render_template('index.html')
+# @app.route('/dashboard')
+# def dashboard():
+#     # return "Página restrita - Dashboard"
+#     return render_template('index.html')
 
 
 @app.route('/user/<username>')
