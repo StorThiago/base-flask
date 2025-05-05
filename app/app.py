@@ -17,7 +17,7 @@ app.config['MYSQL_PASSWORD'] = os.getenv('DB_PASSWORD', 'flask_password')
 app.config['MYSQL_DATABASE'] = os.getenv('DB_NAME', 'flask_db')
 
 
-# Gerir coneções com a base
+# Gerir conexões com a base
 def get_db():
     if 'db' not in g: # valida que nao existe conexão com o objeto especial g (namespace global durante o ciclo de vida de uma requisição)
         try:
@@ -25,7 +25,7 @@ def get_db():
             g.db = mysql.connector.connect(
                 host=app.config['MYSQL_HOST'],
                 user=app.config['MYSQL_USER'],
-                password=app.config['MYSQL_PASSWORD'],
+                password=app.config['MYSQL_PASSWORD'],  
                 database=app.config['MYSQL_DATABASE']
             )
             app.logger.info("Nova conexão com a base de dados estabelecida")
