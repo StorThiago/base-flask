@@ -1,6 +1,7 @@
+import os
 from flask import Flask, request, render_template, redirect, url_for, flash, g, session
 import mysql.connector
-import os
+from werkzeug.utils import secure_filename
 
 
 app = Flask(__name__)
@@ -14,6 +15,18 @@ app.config['MYSQL_HOST'] = os.getenv('DB_HOST', 'db')
 app.config['MYSQL_USER'] = os.getenv('DB_USER', 'flask_user')
 app.config['MYSQL_PASSWORD'] = os.getenv('DB_PASSWORD', 'flask_password')
 app.config['MYSQL_DATABASE'] = os.getenv('DB_NAME', 'flask_db')
+
+
+# Configurações do upload
+UPLOAD_FOLDER = 'static/images/uploads'
+ALLOWED_EXTENSIONS = {'png', 'jpg', 'jpeg', 'gif'}
+app.config['UPLOAD_FOLDER'] = UPLOAD_FOLDER
+app.config['MAX_CONTENT_LENGTH'] = 16 * 1024 * 1024  # 16MB
+
+
+def allowed_file(filename):
+    return '.' in filename and \
+           filename.rsplit('.', 1)[1].lower() in ALLOWED_EXTENSIONS
 
 
 # Gerir coneções com a base
@@ -52,7 +65,7 @@ def login():
         password = request.form.get('password')
 
         if not username or not password:
-            flash('Preencha todos os campos!', 'error')
+            flash('Preencha todos os campos!', 'primary')
             return render_template('login.html')
 
         try:
@@ -70,11 +83,11 @@ def login():
                 flash('Login bem-sucedido!', 'success')
                 return redirect(url_for('dashboard'))
             else:
-                flash('Credenciais inválidas!', 'error')
+                flash('Credenciais inválidas!', 'warning')
 
         except mysql.connector.Error as err:
             app.logger.error(f"Erro na verificação de login: {err}")
-            flash('Erro ao acessar a base de dados.', 'error')
+            flash('Erro ao acessar a base de dados.', 'danger')
 
     return render_template('login.html')
 
@@ -99,18 +112,6 @@ def dashboard():
     return render_template('index.html')
 
 
-# @app.route('/user')
-# def show_user():
-#     if 'user_id' not in session:
-#         flash('Por favor, faça login primeiro!', 'warning')
-#         return redirect(url_for('login'))
-#     return render_template('users.html')
-# @app.route('/user/<username>')
-# def show_user(username):
-#     if 'user_id' not in session:
-#         flash('Por favor, faça login primeiro!', 'warning')
-#         return redirect(url_for('login'))    
-#     return f"Bem-vindo, {username}!"
 @app.route('/user')
 def show_user():
     if 'user_id' not in session:
@@ -120,14 +121,14 @@ def show_user():
     try:
         db = get_db()
         cursor = db.cursor(dictionary=True)
-        cursor.execute("SELECT id, username FROM users")
+        cursor.execute("SELECT id, username, photo, is_active FROM users")
         users = cursor.fetchall()
         cursor.close()
         
         return render_template('users.html', users=users)
     except mysql.connector.Error as err:
         app.logger.error(f"Erro ao buscar usuários: {err}")
-        flash('Erro ao buscar usuários na base de dados.', 'error')
+        flash('Erro ao buscar usuários na base de dados.', 'danger')
         return render_template('users.html', users=[])
 
 
@@ -139,8 +140,9 @@ def add_user():
     
     username = request.form.get('username')
     password = request.form.get('password')
+    email = request.form.get('email')
     
-    if not username or not password:
+    if not username or not password or not email:
         flash('Preencha todos os campos!', 'error')
         return redirect(url_for('show_user'))
     
@@ -155,19 +157,47 @@ def add_user():
             cursor.close()
             return redirect(url_for('show_user'))
         
+        # Processar upload da foto
+        photo_filename = None
+        if 'photo' in request.files:
+            file = request.files['photo']
+            if file and allowed_file(file.filename):
+                filename = secure_filename(file.filename)
+                # Usaremos o ID que será gerado
+                photo_filename = f"user_temp_{filename}"
+                file.save(os.path.join(app.config['UPLOAD_FOLDER'], photo_filename))
+        
         # Inserir novo usuário
-        cursor.execute("INSERT INTO users (username, password) VALUES (%s, %s)", 
-                      (username, password))
+        cursor.execute("INSERT INTO users (username, password, email, photo) VALUES (%s, %s, %s, %s)", 
+                      (username, password, email, photo_filename))
+        user_id = cursor.lastrowid
+        
+        # Renomear a foto com o ID correto
+        if photo_filename:
+            new_filename = f"user_{user_id}_{filename}"
+            os.rename(
+                os.path.join(app.config['UPLOAD_FOLDER'], photo_filename),
+                os.path.join(app.config['UPLOAD_FOLDER'], new_filename)
+            )
+            cursor.execute("UPDATE users SET photo = %s WHERE id = %s", (new_filename, user_id))
+        
         db.commit()
         cursor.close()
         
         flash('Utilizador adicionado com sucesso!', 'success')
-    except mysql.connector.Error as err:
+    except Exception as err:
         db.rollback()
         app.logger.error(f"Erro ao adicionar usuário: {err}")
+        # Remover foto temporária se existir
+        if 'photo_filename' in locals() and photo_filename:
+            try:
+                os.remove(os.path.join(app.config['UPLOAD_FOLDER'], photo_filename))
+            except OSError:
+                pass
         flash('Erro ao adicionar utilizador.', 'danger')
     
     return redirect(url_for('show_user'))
+
 
 @app.route('/delete_user/<int:user_id>', methods=['GET'])
 def delete_user(user_id):
@@ -195,6 +225,100 @@ def delete_user(user_id):
     return redirect(url_for('show_user'))
 
 
+@app.route('/update_user/<int:user_id>', methods=['GET', 'POST'])
+def update_user(user_id):
+    if 'user_id' not in session:
+        flash('Por favor, faça login primeiro!', 'warning')
+        return redirect(url_for('login'))
+    
+    try:
+        db = get_db()
+        cursor = db.cursor(dictionary=True)
+        
+        if request.method == 'POST':
+            username = request.form.get('username')
+            password = request.form.get('password')
+            email = request.form.get('email')
+            
+            # Processar upload da foto
+            photo_filename = None
+            if 'photo' in request.files:
+                file = request.files['photo']
+                if file and allowed_file(file.filename):
+                    filename = secure_filename(file.filename)
+                    photo_filename = f"user_{user_id}_{filename}"
+                    file.save(os.path.join(app.config['UPLOAD_FOLDER'], photo_filename))
+            
+            # Atualizar dados do usuário
+            update_query = "UPDATE users SET username = %s, password = %s, email = %s"
+            params = [username, password, email]
+            
+            if photo_filename:
+                update_query += ", photo = %s"
+                params.append(photo_filename)
+            
+            update_query += " WHERE id = %s"
+            params.append(user_id)
+            
+            cursor.execute(update_query, tuple(params))
+            db.commit()
+            flash('Utilizador atualizado com sucesso!', 'success')
+            return redirect(url_for('show_user'))
+        
+        # GET - Mostrar formulário de edição
+        cursor.execute("SELECT * FROM users WHERE id = %s", (user_id,))
+        user = cursor.fetchone()
+        cursor.close()
+        
+        if not user:
+            flash('Utilizador não encontrado!', 'error')
+            return redirect(url_for('show_user'))
+            
+        return render_template('edit_user.html', user=user)
+    
+    except mysql.connector.Error as err:
+        db.rollback()
+        app.logger.error(f"Erro ao atualizar usuário: {err}")
+        flash('Erro ao atualizar utilizador.', 'danger')
+        return redirect(url_for('show_user'))
+
+
+@app.route('/toggle_user/<int:user_id>', methods=['POST'])
+def toggle_user(user_id):
+    if 'user_id' not in session:
+        flash('Por favor, faça login primeiro!', 'warning')
+        return redirect(url_for('login'))
+    
+    try:
+        db = get_db()
+        cursor = db.cursor(dictionary=True)
+        
+        # Obter estado atual
+        cursor.execute("SELECT is_active FROM users WHERE id = %s", (user_id,))
+        user = cursor.fetchone()
+        
+        if not user:
+            flash('Utilizador não encontrado!', 'danger')
+            return redirect(url_for('show_user'))
+        
+        # Inverter estado
+        new_state = not user['is_active']
+        cursor.execute("UPDATE users SET is_active = %s WHERE id = %s", 
+                       (new_state, user_id))
+        db.commit()
+        cursor.close()
+        
+        status = "ativado" if new_state else "desativado"
+        flash(f'Acesso do utilizador {status} com sucesso!', 'success')
+    
+    except mysql.connector.Error as err:
+        db.rollback()
+        app.logger.error(f"Erro ao alterar estado do usuário: {err}")
+        flash('Erro ao alterar estado do utilizador.', 'danger')
+    
+    return redirect(url_for('show_user'))
+
+
 @app.route("/sobre")
 def sobre():
     if 'user_id' not in session:
@@ -213,4 +337,8 @@ def busca():
 
 
 if __name__ == "__main__":
+    # Cria a pasta de uploads se não existir
+    if not os.path.exists(UPLOAD_FOLDER):
+        os.makedirs(UPLOAD_FOLDER)
+    
     app.run(debug=True)
